@@ -5,7 +5,7 @@ A small, dependency-free Python tool that shows the total, used and free disk sp
 Works on **Windows**, **Linux** and **macOS**. No `pip install` needed, it only uses the Python standard library.
 
 ## Output
-
++ a picture in the end of the readme!
 ```
     __     __ __         __
 .--|  |.--|  |__|.-----.|  |--.-----.-----.---.-.----.-----.
