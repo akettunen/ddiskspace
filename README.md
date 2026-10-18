@@ -1,6 +1,6 @@
 # ddiskspace
 
-A single-file Python tool that shows the total, used and free disk space of your **whole computer**, with a customizable ASCII logo and colors.
+A fast, single-file Python tool that shows the total, used and free disk space of your **whole computer**, with a customizable ASCII logo and colors.
 
 Works on **Windows**, **Linux** and **macOS**. No `pip install` needed, it only uses the Python standard library.
 
@@ -20,11 +20,11 @@ Works on **Windows**, **Linux** and **macOS**. No `pip install` needed, it only 
 ## Requirements
 
 - Python 3.7 or newer
-- A terminal with ANSI color support (Windows Terminal, PowerShell 7, VS Code terminal, or any modern Linux/macOS terminal). The default colors use truecolor, which old `cmd.exe` may not display correctly.
+- A terminal with ANSI color support (Windows Terminal, PowerShell 7, VS Code terminal, or any modern Linux/macOS terminal). The default logo color uses truecolor, which old `cmd.exe` may not display correctly.
 
 ## Usage
 
-`diskspace.py` is the only file you need to run:
+`diskspace.py` is the only file. Just run it:
 
 ```
 python diskspace.py
@@ -32,41 +32,17 @@ python diskspace.py
 
 On Linux/macOS you may need `python3 diskspace.py`.
 
-## How it works
-
-- **Windows:** lists drive letters through the Windows API (`ctypes`). Fixed, removable and network drives are included. CD-ROMs and RAM disks are skipped.
-- **Linux:** reads `/proc/mounts` and keeps only real filesystems (ext4, xfs, btrfs, ntfs, nfs, etc.). Virtual ones like `tmpfs` and `squashfs` are skipped.
-- **macOS:** parses the output of `mount` and skips hidden system volumes (Preboot, VM, etc.).
-- A filesystem mounted in several places is counted only once.
-- All numbers come from `shutil.disk_usage()`.
-
 ## Customizing
 
-### Option 1: edit the script
+Open `diskspace.py` and edit the block between `#customize` and `#customize ends here!` at the top:
 
-Near the top of `diskspace.py`, in the section between `#default customized` and `#customize ends here!`:
-
-| Variable | What it colors | Default |
-|----------|----------------|---------|
-| `ASCII_ART` | The logo text itself | built-in logo |
-| `ASCII_COLOR` | The logo | ruby red `\033[38;2;202;1;71m` |
+| Variable | What it changes | Default |
+|----------|-----------------|---------|
+| `ASCII_ART` | The logo text | built-in logo |
+| `ASCII_COLOR` | Logo color | ruby red `\033[38;2;202;1;71m` |
 | `LABEL_COLOR` | `Total:`, `Used:`, `Free:` | ruby red `\033[38;2;202;1;71m` |
 | `VALUE_COLOR` | The numbers | green `\033[92m` |
 | `RESET` | Resets the color (leave as is) | `\033[0m` |
-
-### Option 2: use a customize.py file (optional)
-
-Create a file named `customize.py` **in the same folder** as `diskspace.py`. Any setting it defines overrides the default, and anything it leaves out keeps the default. If the file doesn't exist, the script simply runs with the defaults.
-
-```python
-# customize.py
-ASCII_ART = r"""
- my custom logo
-"""
-ASCII_COLOR = "\033[38;2;34;139;34m"   # forest green
-LABEL_COLOR = "\033[93m"               # bright yellow
-VALUE_COLOR = "\033[92m"               # bright green
-```
 
 ## Colors
 
@@ -101,6 +77,21 @@ Convert any hex code to RGB (for example `#228B22` becomes 34, 139, 34) and put 
 | `\033[36m` | cyan | `\033[96m` |
 | `\033[37m` | white | `\033[97m` |
 
+## How it works
+
+- **Windows:** lists drive letters through the Windows API (`ctypes`). Fixed, removable and network drives are included. CD-ROMs and RAM disks are skipped.
+- **Linux:** reads `/proc/mounts` and keeps only real filesystems (ext4, xfs, btrfs, ntfs, nfs, etc.). Virtual ones like `tmpfs` and `squashfs` are skipped.
+- **macOS:** parses the output of `mount` and skips hidden system volumes (Preboot, VM, etc.).
+- A device mounted in several places is counted only once.
+
+### Why it is fast
+
+- No external commands on Windows and Linux (macOS needs one call to `mount`).
+- ANSI colors are enabled with a direct Windows API call instead of `os.system("")`.
+- Modules like `re` and `subprocess` are only imported on the system that needs them.
+- Disk numbers are read directly with `os.statvfs` (Linux/macOS) and `GetDiskFreeSpaceExW` (Windows).
+- The whole output is printed in a single call.
+
 ## Troubleshooting
 
 **Weird characters like `←[92m` instead of colors**
@@ -108,9 +99,6 @@ Your terminal doesn't support ANSI colors. Use Windows Terminal or PowerShell 7.
 
 **Colors look different than expected**
 Your terminal may not support truecolor. Use the 256-color format instead.
-
-**`customize.py` changes have no effect**
-Make sure the file is in the same folder as `diskspace.py` and is named exactly `customize.py`, not `customize.py.txt`. On Windows, enable *View > Show > File name extensions* in File Explorer to check.
 
 **Total looks bigger than the real disk (macOS, Btrfs, ZFS)**
 Several volumes can share the same pool of space, so the grand total is only approximate on these systems.
