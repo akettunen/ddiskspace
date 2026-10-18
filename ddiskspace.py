@@ -1,109 +1,128 @@
-import ctypes
 import os
-import platform
-import re
-import shutil
-import subprocess
+import sys
 
-from customize import ASCII_ART, ART_COLOR, LABEL_COLOR, VALUE_COLOR, RESET  # <-- import here
+#customize
 
-os.system("")  # enables ANSI colors on older Windows consoles
+#default customized
+ASCII_ART = r"""
+    __     __ __         __
+.--|  |.--|  |__|.-----.|  |--.-----.-----.---.-.----.-----.
+|  _  ||  _  |  ||__ --||    <|__ --|  _  |  _  |  __|  -__|
+|_____||_____|__||_____||__|__|_____|   __|___._|____|_____|
+                                    |__|"""
+#ASCII_COLOR = logo color
+#LABEL_COLOR = Total, Used, Free
+#VALUE_COLOR = the values the tool gives
+ASCII_COLOR = "\033[38;2;202;1;71m"    #ruby red (default)
+LABEL_COLOR = "\033[38;2;202;1;71m"  # ruby red (default)
+VALUE_COLOR = "\033[92m"  # green (default)
+RESET = "\033[0m"
+#customize ends here!
 
-def format_bytes(num_bytes):
-    for unit in ["B", "KB", "MB", "GB", "TB"]:
-        if num_bytes < 1024:
-            return f"{num_bytes:.1f} {unit}"
-        num_bytes /= 1024
-    return f"{num_bytes:.1f} PB"
 
-# ---------- Find the drives/mount points per OS ----------
+def format_bytes(n):
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024:
+            return f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} PB"
 
-def get_windows_drives():
-    kernel32 = ctypes.windll.kernel32
-    drives = []
-    bitmask = kernel32.GetLogicalDrives()
+
+def usage_windows():
+    import ctypes
+    k = ctypes.windll.kernel32
+    k.SetErrorMode(1)  # no popups for empty drives
+
+    # enable ANSI colors (much faster than os.system(""))
+    h = k.GetStdHandle(-11)
+    mode = ctypes.c_ulong()
+    if k.GetConsoleMode(h, ctypes.byref(mode)):
+        k.SetConsoleMode(h, mode.value | 4)
+
+    total = free = 0
+    mask = k.GetLogicalDrives()
+    avail, tot, fr = ctypes.c_ulonglong(), ctypes.c_ulonglong(), ctypes.c_ulonglong()
     for i in range(26):
-        if bitmask & (1 << i):
-            root = f"{chr(65 + i)}:\\"
-            drive_type = kernel32.GetDriveTypeW(root)
-            if drive_type in (2, 3, 4):
-                drives.append((root, root, {2: "removable", 3: "fixed", 4: "network"}[drive_type]))
-    return drives
+        if mask & (1 << i):
+            root = chr(65 + i) + ":\\"
+            # 2=removable, 3=fixed, 4=network
+            if k.GetDriveTypeW(root) in (2, 3, 4):
+                if k.GetDiskFreeSpaceExW(root, ctypes.byref(avail), ctypes.byref(tot), ctypes.byref(fr)):
+                    total += tot.value
+                    free += fr.value
+    return total, total - free, free
 
-REAL_LINUX_FS = {
+
+REAL_FS = {
     "ext2", "ext3", "ext4", "xfs", "btrfs", "zfs", "f2fs", "vfat", "exfat",
     "ntfs", "ntfs3", "fuseblk", "nfs", "nfs4", "cifs", "smb3",
 }
 
-def get_linux_drives():
-    drives = []
+
+def usage_linux():
+    total = used = free = 0
+    seen = set()
     with open("/proc/mounts") as f:
         for line in f:
-            parts = line.split()
-            if len(parts) < 3:
+            p = line.split()
+            if len(p) < 3 or p[2] not in REAL_FS or p[0] in seen:
                 continue
-            device, mountpoint, fstype = parts[0], parts[1], parts[2]
-            mountpoint = mountpoint.replace("\\040", " ")
-            if fstype in REAL_LINUX_FS:
-                drives.append((device, mountpoint, fstype))
-    return drives
+            try:
+                s = os.statvfs(p[1].replace("\\040", " "))
+            except OSError:
+                continue
+            seen.add(p[0])
+            fr = s.f_frsize
+            total += s.f_blocks * fr
+            used += (s.f_blocks - s.f_bfree) * fr
+            free += s.f_bavail * fr
+    return total, used, free
 
-SKIP_MAC_PREFIXES = (
-    "/System/Volumes/VM", "/System/Volumes/Preboot", "/System/Volumes/Update",
-    "/System/Volumes/xarts", "/System/Volumes/iSCPreboot", "/System/Volumes/Hardware",
-)
 
-def get_macos_drives():
-    drives = []
-    output = subprocess.run(["mount"], capture_output=True, text=True).stdout
-    for line in output.splitlines():
-        m = re.match(r"^(/dev/\S+) on (.+) \(([^,)]+)", line)
-        if not m:
-            continue
-        device, mountpoint, fstype = m.groups()
-        if mountpoint.startswith(SKIP_MAC_PREFIXES):
-            continue
-        drives.append((device, mountpoint, fstype))
-    return drives
-
-def get_drives():
-    system = platform.system()
-    if system == "Windows":
-        return get_windows_drives()
-    if system == "Linux":
-        return get_linux_drives()
-    if system == "Darwin":
-        return get_macos_drives()
-    raise RuntimeError(f"Unsupported OS: {system}")
-
-# ---------- Check usage ----------
-
-def check_whole_computer():
-    total_all = used_all = free_all = 0
+def usage_macos():
+    import re
+    import subprocess
+    skip = ("/System/Volumes/VM", "/System/Volumes/Preboot", "/System/Volumes/Update",
+            "/System/Volumes/xarts", "/System/Volumes/iSCPreboot", "/System/Volumes/Hardware")
+    out = subprocess.run(["mount"], capture_output=True, text=True).stdout
+    total = used = free = 0
     seen = set()
-
-    for device, mountpoint, fstype in get_drives():
+    for line in out.splitlines():
+        m = re.match(r"^(/dev/\S+) on (.+) \(", line)
+        if not m or m.group(1) in seen or m.group(2).startswith(skip):
+            continue
         try:
-            usage = shutil.disk_usage(mountpoint)
-            dev_id = os.stat(mountpoint).st_dev
-        except (PermissionError, OSError):
+            s = os.statvfs(m.group(2))
+        except OSError:
             continue
+        seen.add(m.group(1))
+        fr = s.f_frsize
+        total += s.f_blocks * fr
+        used += (s.f_blocks - s.f_bfree) * fr
+        free += s.f_bavail * fr
+    return total, used, free
 
-        if dev_id in seen:
-            continue
-        seen.add(dev_id)
+#usage
 
-        total_all += usage.total
-        used_all += usage.used
-        free_all += usage.free
+def main():
+    if sys.platform == "win32":
+        total, used, free = usage_windows()
+    elif sys.platform == "darwin":
+        total, used, free = usage_macos()
+    elif sys.platform.startswith("linux"):
+        total, used, free = usage_linux()
+    else:
+        raise RuntimeError(f"Unsupported OS: {sys.platform}")
 
-    # ---- the print lines go here, replacing the old ones ----
-    print(f"{ART_COLOR}{ASCII_ART}{RESET}")
-    print(f"  {LABEL_COLOR}Total:{RESET} {VALUE_COLOR}{format_bytes(total_all)}{RESET}")
-    if total_all:
-        pct = used_all / total_all * 100
-        print(f"  {LABEL_COLOR}Used:{RESET}  {VALUE_COLOR}{format_bytes(used_all)} ({pct:.1f}%){RESET}")
-    print(f"  {LABEL_COLOR}Free:{RESET}  {VALUE_COLOR}{format_bytes(free_all)}{RESET}")
+    lines = [
+        f"{ASCII_COLOR}{ASCII_ART}{RESET}",
+        f"  {LABEL_COLOR}Total:{RESET} {VALUE_COLOR}{format_bytes(total)}{RESET}",
+    ]
+    if total:
+        lines.append(f"  {LABEL_COLOR}Used:{RESET}  {VALUE_COLOR}{format_bytes(used)} ({used / total * 100:.1f}%){RESET}")
+    lines.append(f"  {LABEL_COLOR}Free:{RESET}  {VALUE_COLOR}{format_bytes(free)}{RESET}")
+    print("\n".join(lines))
+
 
 if __name__ == "__main__":
-    check_whole_computer()
+    main()
