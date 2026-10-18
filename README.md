@@ -102,5 +102,8 @@ Your terminal may not support truecolor. Use the 256-color format instead.
 
 **Total looks bigger than the real disk (macOS, Btrfs, ZFS)**
 Several volumes can share the same pool of space, so the grand total is only approximate on these systems.
+### Picture:
+<img width="690" height="222" alt="image" src="https://github.com/user-attachments/assets/81577ac9-28e7-4941-b632-4385cc596be4" />
+
 ### Credits to Claude helping little bit with the code & making this read me
 ### Copyright akettunen 2026
