@@ -105,5 +105,5 @@ Several volumes can share the same pool of space, so the grand total is only app
 ### Picture:
 <img width="690" height="222" alt="image" src="https://github.com/user-attachments/assets/81577ac9-28e7-4941-b632-4385cc596be4" />
 
-### Credits to Claude helping little bit with the code & making this read me
+### Credits to Claude helping little bit with the code & making this README
 ### Copyright akettunen 2026
