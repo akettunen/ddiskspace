@@ -5,7 +5,7 @@ A fast, single-file Python tool that shows the total, used and free disk space o
 Works on **Windows**, **Linux** and **macOS**. No `pip install` needed, it only uses the Python standard library.
 
 ## Output
-
+### Picture is on the very end!
 ```
     __     __ __         __
 .--|  |.--|  |__|.-----.|  |--.-----.-----.---.-.----.-----.
